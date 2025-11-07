@@ -47,6 +47,28 @@ We are open-sourcing Step-Audio-EditX, a powerful LLM-based audio model speciali
   - Supporting Tags:
     - [ *Breathing*, *Laughter*, *Suprise-oh*, *Confirmation-en*, *Uhm*, *Suprise-ah*, *Suprise-wa*, *Sigh*, *Question-ei*, *Dissatisfaction-hnn* ]
 
+all feaures is as follows:
+```json
+{
+  "emotion": [
+      'happy', 'angry', 'sad', 'humour', 'confusion', 'disgusted',
+      'empathy', 'embarrass', 'fear', 'surprised', 'excited',
+      'depressed', 'coldness', 'admiration', 'remove'
+  ],
+  "style": [
+      'serious', 'arrogant', 'child', 'older', 'girl', 'pure',
+      'sister', 'sweet', 'ethereal', 'whisper', 'gentle', 'recite',
+      'generous', 'act_coy', 'warm', 'shy', 'comfort', 'authority',
+      'chat', 'radio', 'soulful', 'story', 'vivid', 'program',
+      'news', 'advertising', 'roar', 'murmur', 'shout', 'deeply', 'loudly',
+      'remove', 'exaggerated'
+  ],
+  "vad": [], # no sub type
+  "denoise": [], # no sub type
+  "paralinguistic": ['Breathing', 'Laughter', 'Suprise-oh', 'Confirmation-en', 'Uhm', 'Suprise-ah', 'Suprise-wa', 'Sigh', 'Question-ei', 'Dissatisfaction-hnn'],
+  "speed": ['faster', 'slower', 'more faster', 'more slower'],
+}
+```
 For more examples, see [demo page](https://stepaudiollm.github.io/step-audio-editx/).
 
 ## Model Download
@@ -121,6 +143,32 @@ Assume you have one GPU with at least 32GB memory available and have already dow
 python app.py --model-path where_you_download_dir --model-source local 
 ```
 
+#### Local Inference Demo
+> [!TIP]
+> For optimal performance, keep audio under 30 seconds per inference.
+
+```bash
+# zero-shot cloning
+python3 tts_infer.py \
+    --model-path where_you_download_dir \
+    --output-dir ./output \
+    --prompt-text "your prompt text"\
+    --prompt-audio your_prompt_audio_path \
+    --generated-text "your target text" \
+    --edit-type "clone"
+
+# edit
+python3 tts_infer.py \
+    --model-path where_you_download_dir \
+    --output-dir ./output \
+    --prompt-text "your promt text" \
+    --prompt-audio your_prompt_audio_path \
+    --generated-text "" \ # for para-linguistic editing, you need to specify the generatedd text
+    --edit-type "emotion" \
+    --edit-info "sad" \
+    --n-edit-iter 2
+```
+
 ## Technical Details
 <img src="assets/architechture.png" width=900>
 Step-Audio-EditX comprises three primary components: 
@@ -170,5 +218,4 @@ Thank you to all the open-source projects for their contributions to this projec
 ```
 
 ## Star History
-
 [![Star History Chart](https://api.star-history.com/svg?repos=stepfun-ai/Step-Audio-EditX&type=Date)](https://star-history.com/#stepfun-ai/Step-Audio-EditX&Date)
