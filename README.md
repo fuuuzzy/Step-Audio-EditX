@@ -15,7 +15,7 @@
 * Nov 06, 2025: 👋 We release the technical report of [Step-Audio-EditX](https://arxiv.org/abs/2511.03601).
 
 ## Introduction
-We are open-sourcing Step-Audio-EditX, a powerful LLM-based audio model specialized in expressive and iterative audio editing. It excels at editing emotion, speaking style, and paralinguistics, and also features robust zero-shot text-to-speech (TTS) capabilities. 
+We are open-sourcing Step-Audio-EditX, a powerful **3B parameters** LLM-based audio model specialized in expressive and iterative audio editing. It excels at editing emotion, speaking style, and paralinguistics, and also features robust zero-shot text-to-speech (TTS) capabilities. 
 
 ## 📑 Open-source Plan
 - [x] Inference Code
@@ -61,9 +61,9 @@ For more examples, see [demo page](https://stepaudiollm.github.io/step-audio-edi
 ### 📜 Requirements
 The following table shows the requirements for running Step-Audio-EditX model (batch size = 1):
 
-|     Model    |  Setting<br/>(sample frequency) | GPU Optimal Memory  |
-|------------|--------------------------------|----------------|
-| Step-Audio-EditX   |        41.6Hz          |       32 GB        |
+|     Model    | Parameters |  Setting<br/>(sample frequency) | GPU Optimal Memory  |
+|------------|------------|--------------------------------|----------------|
+| Step-Audio-EditX   | 3B|         41.6Hz          |       32 GB        |
 
 * An NVIDIA GPU with CUDA support is required.
   * The model is tested on a single L40S GPU.
