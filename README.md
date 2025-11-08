@@ -206,6 +206,16 @@ Thank you to all the open-source projects for their contributions to this projec
 }
 
 ```
+## ⚠️ Usage Disclaimer
+- Do not use this model for any unauthorized activities, including but not limited to:
+  - Voice cloning without permission
+  - Identity impersonation
+  - Fraud
+  - Deepfakes or any other illegal purposes
+- Ensure compliance with local laws and regulations, and adhere to ethical guidelines when using this model.
+- The model developers are not responsible for any misuse or abuse of this technology.
+
+We advocate for responsible generative AI research and urge the community to uphold safety and ethical standards in AI development and application. If you have any concerns regarding the use of this model, please feel free to contact us.
 
 ## Star History
 [![Star History Chart](https://api.star-history.com/svg?repos=stepfun-ai/Step-Audio-EditX&type=Date)](https://star-history.com/#stepfun-ai/Step-Audio-EditX&Date)
