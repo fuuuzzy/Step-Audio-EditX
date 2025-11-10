@@ -414,7 +414,6 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable automatic audio transcription when uploading audio files (default: disabled)"
     )
-    parser.set_defaults(enable_auto_transcribe=True)
 
     args = parser.parse_args()
 
