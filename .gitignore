@@ -1,2 +1,8 @@
 __pycache__/
 output/
+.history
+.venv
+models/*
+
+.DS_Store
+.idea
