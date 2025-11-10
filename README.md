@@ -47,7 +47,90 @@ We are open-sourcing Step-Audio-EditX, a powerful **3B parameters** LLM-based au
   - Supporting Tags:
     - [ *Breathing*, *Laughter*, *Suprise-oh*, *Confirmation-en*, *Uhm*, *Suprise-ah*, *Suprise-wa*, *Sigh*, *Question-ei*, *Dissatisfaction-hnn* ]
 
+
+## Demos
+
+<table>
+  <tr>
+    <th style="vertical-align : middle;text-align: center">Task</th>
+    <th style="vertical-align : middle;text-align: center">Text</th>
+    <th style="vertical-align : middle;text-align: center">Source</th>
+    <th style="vertical-align : middle;text-align: center">Edited</th>
+  </tr>
+
+  <tr>
+    <td align="center"> Emotion-Fear</td>
+    <td align="center"> 我总觉得，有人在跟着我，我能听到奇怪的脚步声。</td>
+    <td align="center">
+
+  [fear_zh_female_prompt.webm](https://github.com/user-attachments/assets/a088c059-032c-423f-81d6-3816ba347ff5) 
+  </td>
+    <td align="center">
+      
+  [fear_zh_female_output.webm](https://github.com/user-attachments/assets/917494ac-5913-4949-8022-46cf55ca05dd)
+  </td>
+  </tr>
+
+
+  <tr>
+    <td align="center"> Style-Whisper</td>
+    <td align="center"> 比如在工作间隙，做一些简单的伸展运动，放松一下身体，这样，会让你更有精力。</td>
+    <td align="center">
+      
+  [whisper_prompt.webm](https://github.com/user-attachments/assets/ed9e22f1-1bac-417b-913a-5f1db31f35c9)
+  </td>
+    <td align="center">
+      
+  [whisper_output.webm](https://github.com/user-attachments/assets/e0501050-40db-4d45-b380-8bcc309f0b5f)
+  </td>
+  </tr>
+
+
+  <tr>
+    <td align="center"> Paralinguistics</td>
+    <td align="center"> 你这次又忘记带钥匙了 [Dissatisfaction-hnn]，真是拿你没办法。</td>
+    <td align="center">
+      
+  [paralingustic_prompt.webm](https://github.com/user-attachments/assets/21e831a3-8110-4c64-a157-60e0cf6735f0)
+  </td>
+    <td align="center">
+      
+  [paralingustic_output.webm](https://github.com/user-attachments/assets/a82f5a40-c6a3-409b-bbe6-271180b20d7b)
+  </td>
+  </tr>
+
+
+  <tr>
+    <td align="center"> Denoising</td>
+    <td align="center"> Such legislation was clarified and extended from time to time thereafter. No, the man was not drunk, he wondered how we got tied up with this stranger. Suddenly, my reflexes had gone. It's healthier to cook without sugar.</td>
+    <td align="center">
+      
+  [denoising_prompt.webm](https://github.com/user-attachments/assets/70464bf4-ebde-44a3-b2a6-8c292333319b)
+  </td>
+    <td align="center">
+      
+  [denoising_output.webm](https://github.com/user-attachments/assets/7cd0ae8d-1bf0-40fc-9bcd-f419bd4b2d21)
+  </td>
+  </tr>
+
+  <tr>
+    <td align="center"> Speed-Faster</td>
+    <td align="center"> 上次你说鞋子有点磨脚，我给你买了一双软软的鞋垫。</td>
+    <td align="center">
+      
+  [speed_faster_prompt.webm](https://github.com/user-attachments/assets/db46609e-1b98-48d8-99c8-e166cfdfc6e3)
+  </td>
+    <td align="center">
+      
+  [speed_faster_output.webm](https://github.com/user-attachments/assets/0fbc14ca-dd4a-4362-aadc-afe0629f4c9f)
+  </td>
+  </tr>
+  
+</table>
+
+
 For more examples, see [demo page](https://stepaudiollm.github.io/step-audio-editx/).
+
 
 ## Model Download
 
