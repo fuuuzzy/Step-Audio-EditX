@@ -353,7 +353,13 @@ if __name__ == "__main__":
         "--srt-path",
         type=str,
         default="",
-        help="Path to SRT subtitle file for batch cloning"
+        help="Path to target SRT subtitle file for batch cloning (contains target texts to generate)"
+    )
+    parser.add_argument(
+        "--original-srt-path",
+        type=str,
+        default="",
+        help="Path to original SRT subtitle file for batch cloning (contains reference audio texts, used as prompt-text)"
     )
     parser.add_argument(
         "--reference-audio-dir",
@@ -480,13 +486,25 @@ if __name__ == "__main__":
             logger.error(f"Reference audio directory not found: {args.reference_audio_dir}")
             exit(1)
         
-        # Parse SRT file
-        logger.info("Parsing SRT file...")
+        # Parse target SRT file (contains target texts to generate)
+        logger.info("Parsing target SRT file...")
         subtitles = parse_srt(args.srt_path)
         
         if not subtitles:
-            logger.error("No subtitles found in SRT file")
+            logger.error("No subtitles found in target SRT file")
             exit(1)
+        
+        # Parse original SRT file if provided (contains reference audio texts)
+        original_subtitles_dict = {}
+        if args.original_srt_path:
+            if not os.path.exists(args.original_srt_path):
+                logger.error(f"Original SRT file not found: {args.original_srt_path}")
+                exit(1)
+            logger.info("Parsing original SRT file...")
+            original_subtitles = parse_srt(args.original_srt_path)
+            # Create a dictionary mapping index to text for quick lookup
+            original_subtitles_dict = {sub['index']: sub['text'] for sub in original_subtitles}
+            logger.info(f"Loaded {len(original_subtitles_dict)} entries from original SRT file")
         
         # Process each subtitle entry
         logger.info(f"Starting batch cloning for {len(subtitles)} segments...")
@@ -508,8 +526,16 @@ if __name__ == "__main__":
             
             logger.info(f"Processing segment {segment_index}: {target_text[:50]}...")
             
-            # Use the reference audio's text as prompt text (or use target text if no prompt text)
-            prompt_text = args.prompt_text if args.prompt_text else target_text
+            # Determine prompt_text: priority: original_srt > command_line_prompt_text > target_text
+            if args.original_srt_path and segment_index in original_subtitles_dict:
+                prompt_text = original_subtitles_dict[segment_index]
+                logger.debug(f"Using prompt_text from original SRT for segment {segment_index}")
+            elif args.prompt_text:
+                prompt_text = args.prompt_text
+                logger.debug(f"Using prompt_text from command line argument for segment {segment_index}")
+            else:
+                prompt_text = target_text
+                logger.debug(f"Using target_text as prompt_text for segment {segment_index}")
             
             try:
                 # Generate output filename
