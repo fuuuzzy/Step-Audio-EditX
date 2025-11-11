@@ -1,12 +1,13 @@
-import os
 import argparse
+import logging
+import os
+import re
+
 import torch
 
-import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-from datetime import datetime
 import torchaudio
 import librosa
 import soundfile as sf
@@ -21,6 +22,7 @@ from config.edit_config import get_supported_edit_types
 # Save audio to temporary directory
 def save_audio(filename, audio_data, sr, output_dir):
     """Save audio data to a temporary file with timestamp"""
+    logger = logging.getLogger(__name__)
     save_path = os.path.join(output_dir, f"{filename}.wav")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -36,6 +38,83 @@ def save_audio(filename, audio_data, sr, output_dir):
         raise
 
     return save_path
+
+
+def parse_srt(srt_path):
+    """
+    Parse SRT subtitle file and extract subtitle entries
+    
+    Args:
+        srt_path: Path to SRT file
+        
+    Returns:
+        List of dicts with keys: 'index', 'text', 'start_time', 'end_time'
+    """
+    logger = logging.getLogger(__name__)
+    subtitles = []
+    
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"Failed to read SRT file: {e}")
+        raise
+    
+    # Split by double newlines to get individual subtitle blocks
+    blocks = re.split(r'\n\s*\n', content.strip())
+    
+    for block in blocks:
+        if not block.strip():
+            continue
+            
+        lines = block.strip().split('\n')
+        if len(lines) < 3:
+            continue
+        
+        try:
+            # First line is index
+            index = int(lines[0].strip())
+            
+            # Second line is timestamp (format: 00:00:00,000 --> 00:00:05,000)
+            timestamp_line = lines[1].strip()
+            time_match = re.match(r'(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})', timestamp_line)
+            if not time_match:
+                logger.warning(f"Could not parse timestamp line: {timestamp_line}")
+                continue
+            
+            start_time = time_match.group(1).replace(',', '.')
+            end_time = time_match.group(2).replace(',', '.')
+            
+            # Remaining lines are text
+            text = '\n'.join(lines[2:]).strip()
+            
+            subtitles.append({
+                'index': index,
+                'text': text,
+                'start_time': start_time,
+                'end_time': end_time
+            })
+            
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Failed to parse subtitle block: {block[:50]}... Error: {e}")
+            continue
+    
+    logger.info(f"Parsed {len(subtitles)} subtitle entries from SRT file")
+    return subtitles
+
+
+def format_segment_number(number, prefix_format="segment_{:03d}.wav"):
+    """
+    Format segment number to match file naming pattern
+    
+    Args:
+        number: Segment number (1-indexed)
+        prefix_format: Format string for file name (default: "segment_{:03d}.wav")
+        
+    Returns:
+        Formatted filename
+    """
+    return prefix_format.format(number)
 
 
 class StepAudioEditX:
@@ -63,7 +142,8 @@ class StepAudioEditX:
             ])
         return show_msgs
 
-    def generate_clone(self, prompt_text_input, prompt_audio_input, generated_text, edit_type, edit_info, state, filename_out):
+    def generate_clone(self, prompt_text_input, prompt_audio_input, generated_text, edit_type, edit_info, state,
+                       filename_out):
         """Generate cloned audio"""
         logger.info("Starting voice cloning process")
         state['history_audio'] = []
@@ -128,8 +208,9 @@ class StepAudioEditX:
             error_msg = f"[Error] Clone failed: {str(e)}"
             logger.error(error_msg)
             return [{"role": "user", "content": error_msg}], state
-        
-    def generate_edit(self, prompt_text_input, prompt_audio_input, generated_text, edit_type, edit_info, state, filename_out):
+
+    def generate_edit(self, prompt_text_input, prompt_audio_input, generated_text, edit_type, edit_info, state,
+                      filename_out):
         """Generate edited audio"""
         logger.info("Starting audio editing process")
 
@@ -262,6 +343,37 @@ if __name__ == "__main__":
         help="prompt audio for editing or cloning"
     )
 
+    # Batch cloning parameters
+    parser.add_argument(
+        "--batch-mode",
+        action="store_true",
+        help="Enable batch cloning mode"
+    )
+    parser.add_argument(
+        "--srt-path",
+        type=str,
+        default="",
+        help="Path to SRT subtitle file for batch cloning"
+    )
+    parser.add_argument(
+        "--reference-audio-dir",
+        type=str,
+        default="",
+        help="Directory containing reference audio files for batch cloning"
+    )
+    parser.add_argument(
+        "--reference-audio-prefix",
+        type=str,
+        default="segment_{:03d}.wav",
+        help="Prefix format for reference audio files (e.g., 'segment_{:03d}.wav' for segment_001.wav)"
+    )
+    parser.add_argument(
+        "--output-prefix",
+        type=str,
+        default="clone_{:03d}.wav",
+        help="Prefix format for output files (e.g., 'clone_{:03d}.wav' for clone_001.wav)"
+    )
+
     parser.add_argument(
         "--edit-type",
         type=str,
@@ -301,7 +413,7 @@ if __name__ == "__main__":
         help="the number of edit iterations"
     )
 
-    parser.add_argument(    
+    parser.add_argument(
         "--generated-text",
         type=str,
         default="",
@@ -347,13 +459,93 @@ if __name__ == "__main__":
         logger.error(f"❌ Error loading models: {e}")
         logger.error("Please check your model paths and source configuration.")
         exit(1)
-    
+
     # output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Create StepAudioEditX instance
     step_audio_editx = StepAudioEditX(args)
-    if args.edit_type == "clone":
+    
+    # Check if batch mode is enabled
+    if args.batch_mode:
+        if args.edit_type != "clone":
+            logger.error("Batch mode is only supported for clone edit type")
+            exit(1)
+        
+        if not args.srt_path or not os.path.exists(args.srt_path):
+            logger.error(f"SRT file not found: {args.srt_path}")
+            exit(1)
+        
+        if not args.reference_audio_dir or not os.path.isdir(args.reference_audio_dir):
+            logger.error(f"Reference audio directory not found: {args.reference_audio_dir}")
+            exit(1)
+        
+        # Parse SRT file
+        logger.info("Parsing SRT file...")
+        subtitles = parse_srt(args.srt_path)
+        
+        if not subtitles:
+            logger.error("No subtitles found in SRT file")
+            exit(1)
+        
+        # Process each subtitle entry
+        logger.info(f"Starting batch cloning for {len(subtitles)} segments...")
+        success_count = 0
+        failed_count = 0
+        
+        for subtitle in subtitles:
+            segment_index = subtitle['index']
+            target_text = subtitle['text']
+            
+            # Find corresponding reference audio file
+            reference_filename = format_segment_number(segment_index, args.reference_audio_prefix)
+            reference_audio_path = os.path.join(args.reference_audio_dir, reference_filename)
+            
+            if not os.path.exists(reference_audio_path):
+                logger.warning(f"Reference audio file not found: {reference_audio_path}, skipping segment {segment_index}")
+                failed_count += 1
+                continue
+            
+            logger.info(f"Processing segment {segment_index}: {target_text[:50]}...")
+            
+            # Use the reference audio's text as prompt text (or use target text if no prompt text)
+            prompt_text = args.prompt_text if args.prompt_text else target_text
+            
+            try:
+                # Generate output filename
+                output_filename = format_segment_number(segment_index, args.output_prefix)
+                output_filename_base = os.path.splitext(output_filename)[0]
+                
+                # Perform cloning
+                _, state = step_audio_editx.generate_clone(
+                    prompt_text,
+                    reference_audio_path,
+                    target_text,
+                    "clone",
+                    args.edit_info,
+                    step_audio_editx.init_state(),
+                    output_filename_base,
+                )
+                
+                success_count += 1
+                logger.info(f"✓ Successfully cloned segment {segment_index}")
+                
+            except Exception as e:
+                logger.error(f"✗ Failed to clone segment {segment_index}: {e}")
+                failed_count += 1
+                continue
+        
+        logger.info(f"Batch cloning completed: {success_count} succeeded, {failed_count} failed")
+        
+    elif args.edit_type == "clone":
+        # Single clone mode
+        if not args.prompt_audio_path:
+            logger.error("--prompt-audio-path is required for single clone mode")
+            exit(1)
+        if not args.generated_text:
+            logger.error("--generated-text is required for single clone mode")
+            exit(1)
+        
         filename_out = os.path.basename(args.prompt_audio_path).split('.')[0] + "_cloned"
         _, state = step_audio_editx.generate_clone(
             args.prompt_text,
@@ -366,10 +558,15 @@ if __name__ == "__main__":
         )
 
     else:
+        # Edit mode
+        if not args.prompt_audio_path:
+            logger.error("--prompt-audio-path is required for edit mode")
+            exit(1)
+        
         state = step_audio_editx.init_state()
         for iter_idx in range(args.n_edit_iter):
             logger.info(f"Starting edit iteration {iter_idx + 1}/{args.n_edit_iter}")
-            filename_out = os.path.basename(args.prompt_audio_path).split('.')[0] + f"_edited_iter{iter_idx + 1}"   
+            filename_out = os.path.basename(args.prompt_audio_path).split('.')[0] + f"_edited_iter{iter_idx + 1}"
             msgs, state = step_audio_editx.generate_edit(
                 args.prompt_text,
                 args.prompt_audio_path,
