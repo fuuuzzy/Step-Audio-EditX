@@ -132,22 +132,53 @@ class StepAudioTTS:
             Tuple[torch.Tensor, int]: Generated audio tensor and sample rate
         """
         try:
-            logger.debug(f"Starting voice cloning: {prompt_wav_path}")
-            prompt_wav, _ = torchaudio.load(prompt_wav_path)
-            vq0206_codes, vq02_codes_ori, vq06_codes_ori, speech_feat, _, speech_embedding = (
+            logger.info("  [tts.clone] Starting voice cloning process")
+            logger.info("  [tts.clone] Input parameters:")
+            logger.info(f"    - prompt_wav_path: {prompt_wav_path}")
+            logger.info(f"    - prompt_text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''} (length: {len(prompt_text)})")
+            logger.info(f"    - target_text: {target_text[:100]}{'...' if len(target_text) > 100 else ''} (length: {len(target_text)})")
+            
+            logger.info("  [tts.clone] Step 1/6: Loading prompt audio file...")
+            prompt_wav, prompt_sr = torchaudio.load(prompt_wav_path)
+            logger.info(f"    ✓ Audio loaded: shape={prompt_wav.shape}, sample_rate={prompt_sr}")
+            
+            logger.info("  [tts.clone] Step 2/6: Preprocessing prompt audio (wav2token)...")
+            vq0206_codes, vq02_codes_ori, vq06_codes_ori, speech_feat, speech_feat_len, speech_embedding = (
                 self.preprocess_prompt_wav(prompt_wav_path)
             )
+            logger.info("    ✓ Preprocessing completed:")
+            logger.info(f"      - vq0206_codes length: {len(vq0206_codes)}")
+            logger.info(f"      - vq02_codes_ori length: {len(vq02_codes_ori)}")
+            logger.info(f"      - vq06_codes_ori length: {len(vq06_codes_ori)}")
+            logger.info(f"      - speech_feat shape: {speech_feat.shape}")
+            logger.info(f"      - speech_embedding shape: {speech_embedding.shape}")
+            
+            logger.info("  [tts.clone] Step 3/6: Generating clone voice ID...")
             prompt_speaker = self.generate_clone_voice_id(prompt_text, prompt_wav)
+            logger.info(f"    ✓ Voice ID generated: {prompt_speaker}")
+            
+            logger.info("  [tts.clone] Step 4/6: Merging VQ codes to token string...")
             prompt_wav_tokens = self.audio_tokenizer.merge_vq0206_to_token_str(
                 vq02_codes_ori, vq06_codes_ori
             )
+            logger.info(f"    ✓ Token string generated: length={len(prompt_wav_tokens)} chars")
+            
+            logger.info("  [tts.clone] Step 5/6: Encoding audio edit clone prompt...")
             token_ids = self._encode_audio_edit_clone_prompt(
                 target_text,
                 prompt_text,
                 prompt_speaker,
                 prompt_wav_tokens,
             )
-
+            logger.info(f"    ✓ Prompt encoded: token_ids length={len(token_ids)}")
+            
+            logger.info("  [tts.clone] Step 6/6: Generating audio tokens with LLM...")
+            logger.info("    Generation parameters:")
+            logger.info("      - max_length: 8192")
+            logger.info("      - temperature: 0.7")
+            logger.info("      - do_sample: True")
+            logger.info("    This may take a while...")
+            
             output_ids = self.llm.generate(
                 torch.tensor([token_ids]).to(torch.long).to("cuda"),
                 max_length=8192,
@@ -156,19 +187,28 @@ class StepAudioTTS:
                 logits_processor=LogitsProcessorList([RepetitionAwareLogitsProcessor()]),
             )
             output_ids = output_ids[:, len(token_ids) : -1]  # skip eos token
-            logger.debug("Voice cloning generation completed")
+            logger.info(f"    ✓ LLM generation completed: output_ids shape={output_ids.shape}")
+            
+            logger.info("  [tts.clone] Converting tokens to waveform...")
             vq0206_codes_vocoder = torch.tensor([vq0206_codes], dtype=torch.long) - 65536
-            return (
-                self.cosy_model.token2wav_nonstream(
-                    output_ids - 65536,
-                    vq0206_codes_vocoder,
-                    speech_feat.to(torch.bfloat16),
-                    speech_embedding.to(torch.bfloat16),
-                ),
-                24000,
+            output_audio = self.cosy_model.token2wav_nonstream(
+                output_ids - 65536,
+                vq0206_codes_vocoder,
+                speech_feat.to(torch.bfloat16),
+                speech_embedding.to(torch.bfloat16),
             )
+            logger.info(f"    ✓ Waveform generated: shape={output_audio.shape}, sample_rate=24000")
+            logger.info("  [tts.clone] ✓ Voice cloning completed successfully")
+            
+            return output_audio, 24000
         except Exception as e:
-            logger.error(f"Clone failed: {e}")
+            logger.error(f"  [tts.clone] ✗ Clone failed: {e}")
+            logger.error(f"  [tts.clone] Exception type: {type(e).__name__}")
+            import traceback
+            logger.error("  [tts.clone] Traceback:")
+            for line in traceback.format_exc().split('\n'):
+                if line.strip():
+                    logger.error(f"    {line}")
             raise
 
     def edit(
