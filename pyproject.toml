@@ -47,5 +47,15 @@ include = [
 
 [dependency-groups]
 dev = []
+# Optional dependencies for specific features
+speaker-diarization = [
+    "hdbscan",
+]
+mossformer = [
+    "rotary-embedding-torch",
+]
+audio-processing = [
+    "ffmpeg-python",
+]
 
 [tool.uv]
