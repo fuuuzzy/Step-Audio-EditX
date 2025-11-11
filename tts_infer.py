@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 import re
-import time
 
 import torch
 
@@ -746,10 +745,6 @@ if __name__ == "__main__":
                 else:
                     logger.warning(f"  ⚠ Clone operation reported success but output file not found: {output_path}")
                     success_count += 1  # Still count as success if function returned without error
-
-                # Sleep between operations to avoid overwhelming the system
-                logger.info("  Sleeping 5s before next operation...")
-                time.sleep(5)
             except Exception as e:
                 logger.error(f"  ✗ Clone operation failed for segment {segment_index}")
                 logger.error(f"    Error type: {type(e).__name__}")
