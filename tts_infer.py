@@ -582,7 +582,7 @@ if __name__ == "__main__":
         logger.info(f"  Reading from: {args.srt_path}")
         try:
             subtitles = parse_srt(args.srt_path)
-            logger.info(f"✓ Successfully parsed target SRT file")
+            logger.info("✓ Successfully parsed target SRT file")
             logger.info(f"  Found {len(subtitles)} subtitle entries")
             if len(subtitles) > 0:
                 logger.info(f"  First entry: index={subtitles[0]['index']}, text={subtitles[0]['text'][:50]}...")
@@ -611,7 +611,7 @@ if __name__ == "__main__":
                 original_subtitles = parse_srt(args.original_srt_path)
                 # Create a dictionary mapping index to text for quick lookup
                 original_subtitles_dict = {sub['index']: sub['text'] for sub in original_subtitles}
-                logger.info(f"✓ Successfully parsed original SRT file")
+                logger.info("✓ Successfully parsed original SRT file")
                 logger.info(f"  Loaded {len(original_subtitles_dict)} entries")
                 if len(original_subtitles_dict) > 0:
                     first_idx = min(original_subtitles_dict.keys())
@@ -654,7 +654,7 @@ if __name__ == "__main__":
                 failed_count += 1
                 skipped_count += 1
                 continue
-            logger.info(f"  ✓ Reference audio file exists")
+            logger.info("  ✓ Reference audio file exists")
 
             # Check file size
             try:
@@ -670,11 +670,11 @@ if __name__ == "__main__":
                 logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
             elif args.prompt_text:
                 prompt_text = args.prompt_text
-                logger.info(f"  Prompt text source: Command line argument")
+                logger.info("  Prompt text source: Command line argument")
                 logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
             else:
                 prompt_text = target_text
-                logger.info(f"  Prompt text source: Target text (fallback)")
+                logger.info("  Prompt text source: Target text (fallback)")
                 logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
 
             # Validate texts
@@ -702,30 +702,30 @@ if __name__ == "__main__":
                 logger.info("  FINAL PARAMETERS FOR CLONE OPERATION")
                 logger.info("  " + "=" * 76)
                 logger.info(f"  Segment Index: {segment_index}")
-                logger.info(f"  Prompt Text (Reference Audio Text):")
+                logger.info("  Prompt Text (Reference Audio Text):")
                 logger.info(f"    Length: {len(prompt_text)} characters")
                 logger.info(f"    Content: {prompt_text}")
-                logger.info(f"  Target Text (Text to Generate):")
+                logger.info("  Target Text (Text to Generate):")
                 logger.info(f"    Length: {len(target_text)} characters")
                 logger.info(f"    Content: {target_text}")
-                logger.info(f"  Reference Audio File:")
+                logger.info("  Reference Audio File:")
                 logger.info(f"    Path: {reference_audio_path}")
                 logger.info(f"    Exists: {os.path.exists(reference_audio_path)}")
                 if os.path.exists(reference_audio_path):
                     file_size = os.path.getsize(reference_audio_path)
                     logger.info(f"    Size: {file_size} bytes ({file_size / 1024:.2f} KB)")
-                logger.info(f"  Output Configuration:")
+                logger.info("  Output Configuration:")
                 logger.info(f"    Output Directory: {args.output_dir}")
                 logger.info(f"    Output Filename Base: {output_filename_base}")
                 logger.info(f"    Full Output Path: {output_path}")
-                logger.info(f"  Edit Configuration:")
-                logger.info(f"    Edit Type: clone")
+                logger.info("  Edit Configuration:")
+                logger.info("    Edit Type: clone")
                 logger.info(f"    Edit Info: {args.edit_info if args.edit_info else 'None'}")
                 logger.info("  " + "=" * 76)
                 logger.info("")
 
                 # Perform cloning
-                logger.info(f"  Calling generate_clone() method...")
+                logger.info("  Calling generate_clone() method...")
 
                 _, state = step_audio_editx.generate_clone(
                     prompt_text,
@@ -736,11 +736,10 @@ if __name__ == "__main__":
                     step_audio_editx.init_state(),
                     output_filename_base,
                 )
-                time.sleep(5)
                 # Verify output file was created
                 if os.path.exists(output_path):
                     output_size = os.path.getsize(output_path)
-                    logger.info(f"  ✓ Clone operation completed successfully")
+                    logger.info("  ✓ Clone operation completed successfully")
                     logger.info(f"    Output file created: {output_path}")
                     logger.info(f"    Output file size: {output_size} bytes ({output_size / 1024:.2f} KB)")
                     success_count += 1
@@ -748,14 +747,16 @@ if __name__ == "__main__":
                     logger.warning(f"  ⚠ Clone operation reported success but output file not found: {output_path}")
                     success_count += 1  # Still count as success if function returned without error
 
-                logger.info("Clone operation completed successfully sleep 5s")
+                # Sleep between operations to avoid overwhelming the system
+                logger.info("  Sleeping 5s before next operation...")
+                time.sleep(5)
             except Exception as e:
                 logger.error(f"  ✗ Clone operation failed for segment {segment_index}")
                 logger.error(f"    Error type: {type(e).__name__}")
                 logger.error(f"    Error message: {str(e)}")
                 import traceback
 
-                logger.error(f"    Traceback:")
+                logger.error("    Traceback:")
                 for line in traceback.format_exc().split('\n'):
                     if line.strip():
                         logger.error(f"      {line}")
