@@ -540,22 +540,35 @@ if __name__ == "__main__":
     # Check if batch mode is enabled
     if args.batch_mode:
         logger.info("=" * 80)
-        logger.info("BATCH CLONING MODE ENABLED")
+        if args.edit_type == "clone":
+            logger.info("BATCH CLONING MODE ENABLED")
+        elif args.edit_type == "denoise":
+            logger.info("BATCH DENOISE MODE ENABLED")
+        else:
+            logger.info(f"BATCH {args.edit_type.upper()} MODE ENABLED")
         logger.info("=" * 80)
 
-        if args.edit_type != "clone":
-            logger.error("Batch mode is only supported for clone edit type")
+        if args.edit_type not in ["clone", "denoise"]:
+            logger.error(
+                f"Batch mode is currently only supported for 'clone' and 'denoise' edit types, got: {args.edit_type}")
             exit(1)
 
         # Log batch mode configuration
         logger.info("Batch mode configuration:")
-        logger.info(f"  - Target SRT path: {args.srt_path}")
-        logger.info(f"  - Original SRT path: {args.original_srt_path if args.original_srt_path else 'Not provided'}")
-        logger.info(f"  - Reference audio directory: {args.reference_audio_dir}")
-        logger.info(f"  - Reference audio prefix: {args.reference_audio_prefix}")
+        logger.info(f"  - Edit type: {args.edit_type}")
+        logger.info(f"  - SRT path: {args.srt_path}")
+        if args.edit_type == "clone":
+            logger.info(
+                f"  - Original SRT path: {args.original_srt_path if args.original_srt_path else 'Not provided (will use target SRT or command line prompt_text)'}")
+        else:
+            logger.info(
+                f"  - Original SRT path: {'Not needed for ' + args.edit_type + ' mode' if not args.original_srt_path else args.original_srt_path}")
+        logger.info(f"  - Input audio directory: {args.reference_audio_dir}")
+        logger.info(f"  - Input audio prefix: {args.reference_audio_prefix}")
         logger.info(f"  - Output prefix: {args.output_prefix}")
         logger.info(f"  - Output directory: {args.output_dir}")
-        logger.info(f"  - Prompt text (command line): {args.prompt_text if args.prompt_text else 'Not provided'}")
+        logger.info(
+            f"  - Prompt text (command line): {args.prompt_text if args.prompt_text else 'Not provided (will use SRT text)'}")
 
         # Validate target SRT file
         if not args.srt_path:
@@ -575,9 +588,14 @@ if __name__ == "__main__":
             exit(1)
         logger.info(f"✓ Reference audio directory exists: {args.reference_audio_dir}")
 
-        # Parse target SRT file (contains target texts to generate)
+        # Parse SRT file
         logger.info("-" * 80)
-        logger.info("Step 1: Parsing target SRT file...")
+        if args.edit_type == "clone":
+            logger.info("Step 1: Parsing target SRT file (contains target texts to generate)...")
+        elif args.edit_type == "denoise":
+            logger.info("Step 1: Parsing SRT file (contains audio texts for denoising)...")
+        else:
+            logger.info("Step 1: Parsing SRT file...")
         logger.info(f"  Reading from: {args.srt_path}")
         try:
             subtitles = parse_srt(args.srt_path)
@@ -597,9 +615,9 @@ if __name__ == "__main__":
             logger.error("No subtitles found in target SRT file")
             exit(1)
 
-        # Parse original SRT file if provided (contains reference audio texts)
+        # Parse original SRT file if provided (only needed for clone mode)
         original_subtitles_dict = {}
-        if args.original_srt_path:
+        if args.original_srt_path and args.edit_type == "clone":
             logger.info("-" * 80)
             logger.info("Step 2: Parsing original SRT file...")
             logger.info(f"  Reading from: {args.original_srt_path}")
@@ -623,11 +641,21 @@ if __name__ == "__main__":
                 exit(1)
         else:
             logger.info("-" * 80)
-            logger.info("Step 2: Original SRT file not provided, will use command line prompt_text or target text")
+            if args.edit_type == "clone":
+                logger.info("Step 2: Original SRT file not provided, will use command line prompt_text or target text")
+            elif args.edit_type == "denoise":
+                logger.info("Step 2: Original SRT file not needed for denoise mode, will use SRT text as prompt_text")
+            else:
+                logger.info("Step 2: Original SRT file not provided")
 
         # Process each subtitle entry
         logger.info("-" * 80)
-        logger.info("Step 3: Starting batch cloning process...")
+        if args.edit_type == "clone":
+            logger.info("Step 3: Starting batch cloning process...")
+        elif args.edit_type == "denoise":
+            logger.info("Step 3: Starting batch denoise process...")
+        else:
+            logger.info(f"Step 3: Starting batch {args.edit_type} process...")
         logger.info(f"  Total segments to process: {len(subtitles)}")
         success_count = 0
         failed_count = 0
@@ -635,11 +663,11 @@ if __name__ == "__main__":
 
         for idx, subtitle in enumerate(subtitles, 1):
             segment_index = subtitle['index']
-            target_text = subtitle['text']
+            subtitle_text = subtitle['text']  # For clone: target_text, for denoise: prompt_text
 
             logger.info("")
             logger.info(f"[{idx}/{len(subtitles)}] Processing segment {segment_index}")
-            logger.info(f"  Target text: {target_text[:100]}{'...' if len(target_text) > 100 else ''}")
+            logger.info(f"  Subtitle text: {subtitle_text[:100]}{'...' if len(subtitle_text) > 100 else ''}")
 
             # Find corresponding reference audio file
             reference_filename = format_segment_number(segment_index, args.reference_audio_prefix)
@@ -662,30 +690,49 @@ if __name__ == "__main__":
             except Exception as e:
                 logger.warning(f"  Could not get file size: {e}")
 
-            # Determine prompt_text: priority: original_srt > command_line_prompt_text > target_text
-            if args.original_srt_path and segment_index in original_subtitles_dict:
-                prompt_text = original_subtitles_dict[segment_index]
-                logger.info(f"  Prompt text source: Original SRT (index {segment_index})")
-                logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
-            elif args.prompt_text:
-                prompt_text = args.prompt_text
-                logger.info("  Prompt text source: Command line argument")
-                logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
-            else:
-                prompt_text = target_text
-                logger.info("  Prompt text source: Target text (fallback)")
-                logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+            # Determine prompt_text based on edit type
+            if args.edit_type == "clone":
+                # For clone: priority: original_srt > command_line_prompt_text > target_text
+                if args.original_srt_path and segment_index in original_subtitles_dict:
+                    prompt_text = original_subtitles_dict[segment_index]
+                    logger.info(f"  Prompt text source: Original SRT (index {segment_index})")
+                    logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+                elif args.prompt_text:
+                    prompt_text = args.prompt_text
+                    logger.info("  Prompt text source: Command line argument")
+                    logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+                else:
+                    prompt_text = subtitle_text
+                    logger.info("  Prompt text source: Target text (fallback)")
+                    logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+                target_text = subtitle_text
+            elif args.edit_type == "denoise":
+                # For denoise: priority: srt_text > command_line_prompt_text
+                if subtitle_text:
+                    prompt_text = subtitle_text
+                    logger.info(f"  Prompt text source: SRT file (index {segment_index})")
+                    logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+                elif args.prompt_text:
+                    prompt_text = args.prompt_text
+                    logger.info("  Prompt text source: Command line argument")
+                    logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
+                else:
+                    logger.warning(f"  ⚠ No prompt text available for segment {segment_index}, using empty string")
+                    prompt_text = ""
+                target_text = None  # Not needed for denoise
 
-            # Validate texts
+            # Validate prompt_text
             if not prompt_text or not prompt_text.strip():
                 logger.error(f"  ✗ Prompt text is empty for segment {segment_index}")
                 failed_count += 1
                 continue
 
-            if not target_text or not target_text.strip():
-                logger.error(f"  ✗ Target text is empty for segment {segment_index}")
-                failed_count += 1
-                continue
+            # Validate target_text for clone
+            if args.edit_type == "clone":
+                if not target_text or not target_text.strip():
+                    logger.error(f"  ✗ Target text is empty for segment {segment_index}")
+                    failed_count += 1
+                    continue
 
             try:
                 # Generate output filename
@@ -695,19 +742,25 @@ if __name__ == "__main__":
                 logger.info(f"  Output filename: {output_filename}")
                 logger.info(f"  Output path: {output_path}")
 
-                # Print all processed parameters before calling clone
+                # Print all processed parameters before calling operation
                 logger.info("")
                 logger.info("  " + "=" * 76)
-                logger.info("  FINAL PARAMETERS FOR CLONE OPERATION")
+                if args.edit_type == "clone":
+                    logger.info("  FINAL PARAMETERS FOR CLONE OPERATION")
+                elif args.edit_type == "denoise":
+                    logger.info("  FINAL PARAMETERS FOR DENOISE OPERATION")
+                else:
+                    logger.info(f"  FINAL PARAMETERS FOR {args.edit_type.upper()} OPERATION")
                 logger.info("  " + "=" * 76)
                 logger.info(f"  Segment Index: {segment_index}")
-                logger.info("  Prompt Text (Reference Audio Text):")
+                logger.info("  Prompt Text (Audio Text):")
                 logger.info(f"    Length: {len(prompt_text)} characters")
                 logger.info(f"    Content: {prompt_text}")
-                logger.info("  Target Text (Text to Generate):")
-                logger.info(f"    Length: {len(target_text)} characters")
-                logger.info(f"    Content: {target_text}")
-                logger.info("  Reference Audio File:")
+                if args.edit_type == "clone":
+                    logger.info("  Target Text (Text to Generate):")
+                    logger.info(f"    Length: {len(target_text)} characters")
+                    logger.info(f"    Content: {target_text}")
+                logger.info("  Input Audio File:")
                 logger.info(f"    Path: {reference_audio_path}")
                 logger.info(f"    Exists: {os.path.exists(reference_audio_path)}")
                 if os.path.exists(reference_audio_path):
@@ -718,35 +771,55 @@ if __name__ == "__main__":
                 logger.info(f"    Output Filename Base: {output_filename_base}")
                 logger.info(f"    Full Output Path: {output_path}")
                 logger.info("  Edit Configuration:")
-                logger.info("    Edit Type: clone")
+                logger.info(f"    Edit Type: {args.edit_type}")
                 logger.info(f"    Edit Info: {args.edit_info if args.edit_info else 'None'}")
                 logger.info("  " + "=" * 76)
                 logger.info("")
 
-                # Perform cloning
-                logger.info("  Calling generate_clone() method...")
+                # Perform operation based on edit type
+                if args.edit_type == "clone":
+                    logger.info("  Calling generate_clone() method...")
+                    _, state = step_audio_editx.generate_clone(
+                        prompt_text,
+                        reference_audio_path,
+                        target_text,
+                        "clone",
+                        args.edit_info,
+                        step_audio_editx.init_state(),
+                        output_filename_base,
+                    )
+                    operation_name = "Clone"
+                elif args.edit_type == "denoise":
+                    logger.info("  Calling generate_edit() method...")
+                    _, state = step_audio_editx.generate_edit(
+                        prompt_text,
+                        reference_audio_path,
+                        "",  # generated_text not needed for denoise
+                        "denoise",
+                        args.edit_info,
+                        step_audio_editx.init_state(),
+                        output_filename_base,
+                    )
+                    operation_name = "Denoise"
+                else:
+                    logger.error(f"  ✗ Unsupported edit type for batch mode: {args.edit_type}")
+                    failed_count += 1
+                    continue
 
-                _, state = step_audio_editx.generate_clone(
-                    prompt_text,
-                    reference_audio_path,
-                    target_text,
-                    "clone",
-                    args.edit_info,
-                    step_audio_editx.init_state(),
-                    output_filename_base,
-                )
                 # Verify output file was created
                 if os.path.exists(output_path):
                     output_size = os.path.getsize(output_path)
-                    logger.info("  ✓ Clone operation completed successfully")
+                    logger.info(f"  ✓ {operation_name} operation completed successfully")
                     logger.info(f"    Output file created: {output_path}")
                     logger.info(f"    Output file size: {output_size} bytes ({output_size / 1024:.2f} KB)")
                     success_count += 1
                 else:
-                    logger.warning(f"  ⚠ Clone operation reported success but output file not found: {output_path}")
+                    logger.warning(
+                        f"  ⚠ {operation_name} operation reported success but output file not found: {output_path}")
                     success_count += 1  # Still count as success if function returned without error
+
             except Exception as e:
-                logger.error(f"  ✗ Clone operation failed for segment {segment_index}")
+                logger.error(f"  ✗ {args.edit_type.capitalize()} operation failed for segment {segment_index}")
                 logger.error(f"    Error type: {type(e).__name__}")
                 logger.error(f"    Error message: {str(e)}")
                 import traceback
@@ -761,7 +834,12 @@ if __name__ == "__main__":
         # Final summary
         logger.info("")
         logger.info("=" * 80)
-        logger.info("BATCH CLONING SUMMARY")
+        if args.edit_type == "clone":
+            logger.info("BATCH CLONING SUMMARY")
+        elif args.edit_type == "denoise":
+            logger.info("BATCH DENOISE SUMMARY")
+        else:
+            logger.info(f"BATCH {args.edit_type.upper()} SUMMARY")
         logger.info("=" * 80)
         logger.info(f"  Total segments: {len(subtitles)}")
         logger.info(f"  ✓ Successful: {success_count}")
