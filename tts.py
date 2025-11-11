@@ -1,22 +1,20 @@
 import hashlib
-import io
+import logging
 import os
 import re
-import logging
+from http import HTTPStatus
+from typing import Tuple, Optional
+
+import librosa
 import numpy as np
 import torch
-import librosa
-import soundfile as sf
-from typing import Tuple, Optional
-from http import HTTPStatus
-
 import torchaudio
-
-from model_loader import model_loader, ModelSource
-from config.prompts import AUDIO_EDIT_CLONE_SYSTEM_PROMPT_TPL, AUDIO_EDIT_SYSTEM_PROMPT
-from stepvocoder.cosyvoice2.cli.cosyvoice import CosyVoice
 from transformers.generation.logits_process import LogitsProcessor
 from transformers.generation.utils import LogitsProcessorList
+
+from config.prompts import AUDIO_EDIT_CLONE_SYSTEM_PROMPT_TPL, AUDIO_EDIT_SYSTEM_PROMPT
+from model_loader import model_loader, ModelSource
+from stepvocoder.cosyvoice2.cli.cosyvoice import CosyVoice
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class HTTPException(Exception):
     """Custom HTTP exception for API errors"""
+
     def __init__(self, status_code, detail):
         self.status_code = status_code
         self.detail = detail
@@ -32,8 +31,9 @@ class HTTPException(Exception):
 
 class RepetitionAwareLogitsProcessor(LogitsProcessor):
     """Logits processor to handle repetition in generation"""
+
     def __call__(
-        self, input_ids: torch.LongTensor, scores: torch.FloatTensor
+            self, input_ids: torch.LongTensor, scores: torch.FloatTensor
     ) -> torch.FloatTensor:
         window_size = 10
         threshold = 0.1
@@ -50,20 +50,21 @@ class RepetitionAwareLogitsProcessor(LogitsProcessor):
         scores[mask, last_tokens[mask].squeeze(-1)] = float("-inf")
         return scores
 
+
 class StepAudioTTS:
     """
     Step Audio TTS wrapper for voice cloning and audio editing tasks
     """
 
     def __init__(
-        self,
-        model_path,
-        audio_tokenizer,
-        model_source=ModelSource.AUTO,
-        tts_model_id=None,
-        quantization_config=None,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda"
+            self,
+            model_path,
+            audio_tokenizer,
+            model_source=ModelSource.AUTO,
+            tts_model_id=None,
+            quantization_config=None,
+            torch_dtype=torch.bfloat16,
+            device_map="cuda"
     ):
         """
         Initialize StepAudioTTS
@@ -115,10 +116,10 @@ class StepAudioTTS:
         self.edit_sys_prompt = AUDIO_EDIT_SYSTEM_PROMPT
 
     def clone(
-        self,
-        prompt_wav_path: str,
-        prompt_text: str,
-        target_text: str
+            self,
+            prompt_wav_path: str,
+            prompt_text: str,
+            target_text: str
     ) -> Tuple[torch.Tensor, int]:
         """
         Clone voice from reference audio
@@ -132,53 +133,22 @@ class StepAudioTTS:
             Tuple[torch.Tensor, int]: Generated audio tensor and sample rate
         """
         try:
-            logger.info("  [tts.clone] Starting voice cloning process")
-            logger.info("  [tts.clone] Input parameters:")
-            logger.info(f"    - prompt_wav_path: {prompt_wav_path}")
-            logger.info(f"    - prompt_text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''} (length: {len(prompt_text)})")
-            logger.info(f"    - target_text: {target_text[:100]}{'...' if len(target_text) > 100 else ''} (length: {len(target_text)})")
-            
-            logger.info("  [tts.clone] Step 1/6: Loading prompt audio file...")
-            prompt_wav, prompt_sr = torchaudio.load(prompt_wav_path)
-            logger.info(f"    ✓ Audio loaded: shape={prompt_wav.shape}, sample_rate={prompt_sr}")
-            
-            logger.info("  [tts.clone] Step 2/6: Preprocessing prompt audio (wav2token)...")
-            vq0206_codes, vq02_codes_ori, vq06_codes_ori, speech_feat, speech_feat_len, speech_embedding = (
+            logger.debug(f"Starting voice cloning: {prompt_wav_path}")
+            prompt_wav, _ = torchaudio.load(prompt_wav_path)
+            vq0206_codes, vq02_codes_ori, vq06_codes_ori, speech_feat, _, speech_embedding = (
                 self.preprocess_prompt_wav(prompt_wav_path)
             )
-            logger.info("    ✓ Preprocessing completed:")
-            logger.info(f"      - vq0206_codes length: {len(vq0206_codes)}")
-            logger.info(f"      - vq02_codes_ori length: {len(vq02_codes_ori)}")
-            logger.info(f"      - vq06_codes_ori length: {len(vq06_codes_ori)}")
-            logger.info(f"      - speech_feat shape: {speech_feat.shape}")
-            logger.info(f"      - speech_embedding shape: {speech_embedding.shape}")
-            
-            logger.info("  [tts.clone] Step 3/6: Generating clone voice ID...")
             prompt_speaker = self.generate_clone_voice_id(prompt_text, prompt_wav)
-            logger.info(f"    ✓ Voice ID generated: {prompt_speaker}")
-            
-            logger.info("  [tts.clone] Step 4/6: Merging VQ codes to token string...")
             prompt_wav_tokens = self.audio_tokenizer.merge_vq0206_to_token_str(
                 vq02_codes_ori, vq06_codes_ori
             )
-            logger.info(f"    ✓ Token string generated: length={len(prompt_wav_tokens)} chars")
-            
-            logger.info("  [tts.clone] Step 5/6: Encoding audio edit clone prompt...")
             token_ids = self._encode_audio_edit_clone_prompt(
                 target_text,
                 prompt_text,
                 prompt_speaker,
                 prompt_wav_tokens,
             )
-            logger.info(f"    ✓ Prompt encoded: token_ids length={len(token_ids)}")
-            
-            logger.info("  [tts.clone] Step 6/6: Generating audio tokens with LLM...")
-            logger.info("    Generation parameters:")
-            logger.info("      - max_length: 8192")
-            logger.info("      - temperature: 0.7")
-            logger.info("      - do_sample: True")
-            logger.info("    This may take a while...")
-            
+
             output_ids = self.llm.generate(
                 torch.tensor([token_ids]).to(torch.long).to("cuda"),
                 max_length=8192,
@@ -186,38 +156,29 @@ class StepAudioTTS:
                 do_sample=True,
                 logits_processor=LogitsProcessorList([RepetitionAwareLogitsProcessor()]),
             )
-            output_ids = output_ids[:, len(token_ids) : -1]  # skip eos token
-            logger.info(f"    ✓ LLM generation completed: output_ids shape={output_ids.shape}")
-            
-            logger.info("  [tts.clone] Converting tokens to waveform...")
+            output_ids = output_ids[:, len(token_ids): -1]  # skip eos token
+            logger.debug("Voice cloning generation completed")
             vq0206_codes_vocoder = torch.tensor([vq0206_codes], dtype=torch.long) - 65536
-            output_audio = self.cosy_model.token2wav_nonstream(
-                output_ids - 65536,
-                vq0206_codes_vocoder,
-                speech_feat.to(torch.bfloat16),
-                speech_embedding.to(torch.bfloat16),
+            return (
+                self.cosy_model.token2wav_nonstream(
+                    output_ids - 65536,
+                    vq0206_codes_vocoder,
+                    speech_feat.to(torch.bfloat16),
+                    speech_embedding.to(torch.bfloat16),
+                ),
+                24000,
             )
-            logger.info(f"    ✓ Waveform generated: shape={output_audio.shape}, sample_rate=24000")
-            logger.info("  [tts.clone] ✓ Voice cloning completed successfully")
-            
-            return output_audio, 24000
         except Exception as e:
-            logger.error(f"  [tts.clone] ✗ Clone failed: {e}")
-            logger.error(f"  [tts.clone] Exception type: {type(e).__name__}")
-            import traceback
-            logger.error("  [tts.clone] Traceback:")
-            for line in traceback.format_exc().split('\n'):
-                if line.strip():
-                    logger.error(f"    {line}")
+            logger.error(f"Clone failed: {e}")
             raise
 
     def edit(
-        self,
-        input_audio_path: str,
-        audio_text: str,
-        edit_type: str,
-        edit_info: Optional[str] = None,
-        text: Optional[str] = None
+            self,
+            input_audio_path: str,
+            audio_text: str,
+            edit_type: str,
+            edit_info: Optional[str] = None,
+            text: Optional[str] = None
     ) -> Tuple[torch.Tensor, int]:
         """
         Edit audio based on specified edit type
@@ -233,7 +194,7 @@ class StepAudioTTS:
             Tuple[torch.Tensor, int]: Edited audio tensor and sample rate
         """
         try:
-            logger.debug(f"Starting audio editing: {edit_type} - {edit_info}")            
+            logger.debug(f"Starting audio editing: {edit_type} - {edit_info}")
             vq0206_codes, vq02_codes_ori, vq06_codes_ori, speech_feat, _, speech_embedding = (
                 self.preprocess_prompt_wav(input_audio_path)
             )
@@ -258,7 +219,7 @@ class StepAudioTTS:
                 do_sample=True,
                 logits_processor=LogitsProcessorList([RepetitionAwareLogitsProcessor()]),
             )
-            output_ids = output_ids[:, len(prompt_tokens) : -1]  # skip eos token
+            output_ids = output_ids[:, len(prompt_tokens): -1]  # skip eos token
             vq0206_codes_vocoder = torch.tensor([vq0206_codes], dtype=torch.long) - 65536
             logger.debug("Audio editing generation completed")
             return (
@@ -275,12 +236,12 @@ class StepAudioTTS:
             raise
 
     def _build_audio_edit_instruction(
-        self,
-        audio_text: str,
-        edit_type: str,
-        edit_info: Optional[str] = None,
-        text: Optional[str] = None
-        ) -> str:
+            self,
+            audio_text: str,
+            edit_type: str,
+            edit_info: Optional[str] = None,
+            text: Optional[str] = None
+    ) -> str:
         """
         Build audio editing instruction based on request
 
@@ -299,7 +260,7 @@ class StepAudioTTS:
             if edit_info == "remove":
                 instruct_prefix = f"Remove any emotion in the following audio and the reference text is: {audio_text}\n"
             else:
-                instruct_prefix=f"Make the following audio more {edit_info}. The text corresponding to the audio is: {audio_text}\n"
+                instruct_prefix = f"Make the following audio more {edit_info}. The text corresponding to the audio is: {audio_text}\n"
         elif edit_type == "style":
             if edit_info == "remove":
                 instruct_prefix = f"Remove any speaking styles in the following audio and the reference text is: {audio_text}\n"
@@ -320,7 +281,7 @@ class StepAudioTTS:
         return instruct_prefix
 
     def _encode_audio_edit_prompt(
-        self, sys_prompt: str, instruct_prefix: str, audio_token_str: str
+            self, sys_prompt: str, instruct_prefix: str, audio_token_str: str
     ) -> list[int]:
         """
         Encode audio edit prompt to token sequence
@@ -344,9 +305,9 @@ class StepAudioTTS:
         )
         history.extend([4] + qrole_toks + human_turn_toks + [3] + [4] + arole_toks)
         return history
-    
+
     def _encode_audio_edit_clone_prompt(
-        self, text: str, prompt_text: str, prompt_speaker: str, prompt_wav_tokens: str
+            self, text: str, prompt_text: str, prompt_speaker: str, prompt_wav_tokens: str
     ):
         prompt = self.edit_clone_sys_prompt_tpl.format(
             speaker=prompt_speaker,
@@ -359,9 +320,9 @@ class StepAudioTTS:
         history.extend([4] + sys_tokens + [3])
 
         _prefix_tokens = self.tokenizer.encode("\n")
-        
+
         target_token_encode = self.tokenizer.encode("\n" + text)
-        target_tokens = target_token_encode[len(_prefix_tokens) :]
+        target_tokens = target_token_encode[len(_prefix_tokens):]
 
         qrole_toks = self.tokenizer.encode("human\n")
         arole_toks = self.tokenizer.encode("assistant\n")
@@ -375,7 +336,6 @@ class StepAudioTTS:
             + arole_toks
         )
         return history
-
 
     def detect_instruction_name(self, text):
         instruction_name = ""
@@ -403,7 +363,7 @@ class StepAudioTTS:
             logger.error(f"Failed to process audio file: {e}")
             raise
 
-    def preprocess_prompt_wav(self, prompt_wav_path : str):
+    def preprocess_prompt_wav(self, prompt_wav_path: str):
         prompt_wav, prompt_wav_sr = torchaudio.load(prompt_wav_path)
         if prompt_wav.shape[0] > 1:
             prompt_wav = prompt_wav.mean(dim=0, keepdim=True)  # 将多通道音频转换为单通道
@@ -422,7 +382,7 @@ class StepAudioTTS:
             speech_feat_len,
             speech_embedding,
         )
-        
+
     def generate_clone_voice_id(self, prompt_text, prompt_wav):
         hasher = hashlib.sha256()
         hasher.update(prompt_text.encode('utf-8'))
@@ -434,4 +394,3 @@ class StepAudioTTS:
         hasher.update(audio_sample.tobytes())
         voice_hash = hasher.hexdigest()[:16]
         return f"clone_{voice_hash}"
-    

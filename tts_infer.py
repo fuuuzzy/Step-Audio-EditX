@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import re
+import time
 
 import torch
 
@@ -52,7 +53,7 @@ def parse_srt(srt_path):
     """
     logger = logging.getLogger(__name__)
     subtitles = []
-    
+
     try:
         logger.debug(f"Reading SRT file: {srt_path}")
         with open(srt_path, 'r', encoding='utf-8') as f:
@@ -61,48 +62,49 @@ def parse_srt(srt_path):
     except Exception as e:
         logger.error(f"Failed to read SRT file: {e}")
         raise
-    
+
     # Split by double newlines to get individual subtitle blocks
     blocks = re.split(r'\n\s*\n', content.strip())
     logger.debug(f"Found {len(blocks)} subtitle blocks (before filtering)")
-    
+
     parsed_count = 0
     skipped_count = 0
-    
+
     for block_idx, block in enumerate(blocks, 1):
         if not block.strip():
             skipped_count += 1
             continue
-            
+
         lines = block.strip().split('\n')
         if len(lines) < 3:
             logger.debug(f"Block {block_idx}: Skipped (too few lines: {len(lines)})")
             skipped_count += 1
             continue
-        
+
         try:
             # First line is index
             index = int(lines[0].strip())
-            
+
             # Second line is timestamp (format: 00:00:00,000 --> 00:00:05,000)
             timestamp_line = lines[1].strip()
             time_match = re.match(r'(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})', timestamp_line)
             if not time_match:
-                logger.warning(f"Block {block_idx} (index {lines[0].strip()}): Could not parse timestamp line: {timestamp_line}")
+                logger.warning(
+                    f"Block {block_idx} (index {lines[0].strip()}): Could not parse timestamp line: {timestamp_line}")
                 skipped_count += 1
                 continue
-            
+
             start_time = time_match.group(1).replace(',', '.')
             end_time = time_match.group(2).replace(',', '.')
-            
+
             # Remaining lines are text
             text = '\n'.join(lines[2:]).strip()
-            
+
             if not text:
                 logger.warning(f"Block {block_idx} (index {index}): Empty text, skipping")
                 skipped_count += 1
                 continue
-            
+
             subtitles.append({
                 'index': index,
                 'text': text,
@@ -110,18 +112,18 @@ def parse_srt(srt_path):
                 'end_time': end_time
             })
             parsed_count += 1
-            
+
         except (ValueError, IndexError) as e:
             logger.warning(f"Block {block_idx}: Failed to parse subtitle block: {block[:50]}... Error: {e}")
             skipped_count += 1
             continue
-    
+
     logger.info(f"Parsed {parsed_count} subtitle entries from SRT file (skipped {skipped_count} invalid blocks)")
     if parsed_count > 0:
         # Log index range
         indices = [s['index'] for s in subtitles]
         logger.debug(f"Index range: {min(indices)} to {max(indices)}")
-    
+
     return subtitles
 
 
@@ -169,13 +171,15 @@ class StepAudioEditX:
         """Generate cloned audio"""
         logger.info("  [generate_clone] Starting voice cloning process")
         logger.info("  [generate_clone] Input parameters received:")
-        logger.info(f"    - prompt_text_input: {prompt_text_input[:100]}{'...' if len(prompt_text_input) > 100 else ''} (length: {len(prompt_text_input)})")
+        logger.info(
+            f"    - prompt_text_input: {prompt_text_input[:100]}{'...' if len(prompt_text_input) > 100 else ''} (length: {len(prompt_text_input)})")
         logger.info(f"    - prompt_audio_input: {prompt_audio_input}")
-        logger.info(f"    - generated_text: {generated_text[:100]}{'...' if len(generated_text) > 100 else ''} (length: {len(generated_text)})")
+        logger.info(
+            f"    - generated_text: {generated_text[:100]}{'...' if len(generated_text) > 100 else ''} (length: {len(generated_text)})")
         logger.info(f"    - edit_type: {edit_type}")
         logger.info(f"    - edit_info: {edit_info}")
         logger.info(f"    - filename_out: {filename_out}")
-        
+
         state['history_audio'] = []
         state['history_messages'] = []
 
@@ -204,13 +208,14 @@ class StepAudioEditX:
             logger.info("  [generate_clone] Calling common_tts_engine.clone()...")
             logger.info("    Arguments:")
             logger.info(f"      - prompt_wav_path: {prompt_audio_input}")
-            logger.info(f"      - prompt_text: {prompt_text_input[:100]}{'...' if len(prompt_text_input) > 100 else ''}")
+            logger.info(
+                f"      - prompt_text: {prompt_text_input[:100]}{'...' if len(prompt_text_input) > 100 else ''}")
             logger.info(f"      - target_text: {generated_text[:100]}{'...' if len(generated_text) > 100 else ''}")
-            
+
             output_audio, output_sr = common_tts_engine.clone(
                 prompt_audio_input, prompt_text_input, generated_text
             )
-            
+
             logger.info("  [generate_clone] ✓ Clone operation returned")
             logger.info(f"    - output_audio type: {type(output_audio)}")
             logger.info(f"    - output_sr: {output_sr}")
@@ -241,11 +246,11 @@ class StepAudioEditX:
                     "raw_wave": (input_sample_rate, input_audio_data_numpy),
                     "edit_wave": (output_sr, audio_numpy),
                 }
-                
+
                 logger.info(f"  [generate_clone] Saving audio to: {filename_out}")
                 audio_save_path = save_audio(filename_out, audio_numpy, output_sr, self.args.output_dir)
                 logger.info(f"  [generate_clone] ✓ Audio saved to: {audio_save_path}")
-                
+
                 state["history_audio"].append((output_sr, audio_save_path, generated_text))
                 state["history_messages"].append(cur_assistant_msg)
 
@@ -532,17 +537,17 @@ if __name__ == "__main__":
 
     # Create StepAudioEditX instance
     step_audio_editx = StepAudioEditX(args)
-    
+
     # Check if batch mode is enabled
     if args.batch_mode:
         logger.info("=" * 80)
         logger.info("BATCH CLONING MODE ENABLED")
         logger.info("=" * 80)
-        
+
         if args.edit_type != "clone":
             logger.error("Batch mode is only supported for clone edit type")
             exit(1)
-        
+
         # Log batch mode configuration
         logger.info("Batch mode configuration:")
         logger.info(f"  - Target SRT path: {args.srt_path}")
@@ -552,7 +557,7 @@ if __name__ == "__main__":
         logger.info(f"  - Output prefix: {args.output_prefix}")
         logger.info(f"  - Output directory: {args.output_dir}")
         logger.info(f"  - Prompt text (command line): {args.prompt_text if args.prompt_text else 'Not provided'}")
-        
+
         # Validate target SRT file
         if not args.srt_path:
             logger.error("Target SRT path is required for batch mode")
@@ -561,7 +566,7 @@ if __name__ == "__main__":
             logger.error(f"Target SRT file not found: {args.srt_path}")
             exit(1)
         logger.info(f"✓ Target SRT file exists: {args.srt_path}")
-        
+
         # Validate reference audio directory
         if not args.reference_audio_dir:
             logger.error("Reference audio directory is required for batch mode")
@@ -570,7 +575,7 @@ if __name__ == "__main__":
             logger.error(f"Reference audio directory not found: {args.reference_audio_dir}")
             exit(1)
         logger.info(f"✓ Reference audio directory exists: {args.reference_audio_dir}")
-        
+
         # Parse target SRT file (contains target texts to generate)
         logger.info("-" * 80)
         logger.info("Step 1: Parsing target SRT file...")
@@ -585,13 +590,14 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"✗ Failed to parse target SRT file: {e}")
             import traceback
+
             logger.error(traceback.format_exc())
             exit(1)
-        
+
         if not subtitles:
             logger.error("No subtitles found in target SRT file")
             exit(1)
-        
+
         # Parse original SRT file if provided (contains reference audio texts)
         original_subtitles_dict = {}
         if args.original_srt_path:
@@ -613,12 +619,13 @@ if __name__ == "__main__":
             except Exception as e:
                 logger.error(f"✗ Failed to parse original SRT file: {e}")
                 import traceback
+
                 logger.error(traceback.format_exc())
                 exit(1)
         else:
             logger.info("-" * 80)
             logger.info("Step 2: Original SRT file not provided, will use command line prompt_text or target text")
-        
+
         # Process each subtitle entry
         logger.info("-" * 80)
         logger.info("Step 3: Starting batch cloning process...")
@@ -626,21 +633,21 @@ if __name__ == "__main__":
         success_count = 0
         failed_count = 0
         skipped_count = 0
-        
+
         for idx, subtitle in enumerate(subtitles, 1):
             segment_index = subtitle['index']
             target_text = subtitle['text']
-            
+
             logger.info("")
             logger.info(f"[{idx}/{len(subtitles)}] Processing segment {segment_index}")
             logger.info(f"  Target text: {target_text[:100]}{'...' if len(target_text) > 100 else ''}")
-            
+
             # Find corresponding reference audio file
             reference_filename = format_segment_number(segment_index, args.reference_audio_prefix)
             reference_audio_path = os.path.join(args.reference_audio_dir, reference_filename)
             logger.info(f"  Reference audio file: {reference_filename}")
             logger.info(f"  Full path: {reference_audio_path}")
-            
+
             if not os.path.exists(reference_audio_path):
                 logger.warning(f"  ✗ Reference audio file not found: {reference_audio_path}")
                 logger.warning(f"    Skipping segment {segment_index}")
@@ -648,14 +655,14 @@ if __name__ == "__main__":
                 skipped_count += 1
                 continue
             logger.info(f"  ✓ Reference audio file exists")
-            
+
             # Check file size
             try:
                 file_size = os.path.getsize(reference_audio_path)
-                logger.info(f"  Reference audio file size: {file_size} bytes ({file_size/1024:.2f} KB)")
+                logger.info(f"  Reference audio file size: {file_size} bytes ({file_size / 1024:.2f} KB)")
             except Exception as e:
                 logger.warning(f"  Could not get file size: {e}")
-            
+
             # Determine prompt_text: priority: original_srt > command_line_prompt_text > target_text
             if args.original_srt_path and segment_index in original_subtitles_dict:
                 prompt_text = original_subtitles_dict[segment_index]
@@ -669,18 +676,18 @@ if __name__ == "__main__":
                 prompt_text = target_text
                 logger.info(f"  Prompt text source: Target text (fallback)")
                 logger.info(f"  Prompt text: {prompt_text[:100]}{'...' if len(prompt_text) > 100 else ''}")
-            
+
             # Validate texts
             if not prompt_text or not prompt_text.strip():
                 logger.error(f"  ✗ Prompt text is empty for segment {segment_index}")
                 failed_count += 1
                 continue
-            
+
             if not target_text or not target_text.strip():
                 logger.error(f"  ✗ Target text is empty for segment {segment_index}")
                 failed_count += 1
                 continue
-            
+
             try:
                 # Generate output filename
                 output_filename = format_segment_number(segment_index, args.output_prefix)
@@ -688,7 +695,7 @@ if __name__ == "__main__":
                 output_path = os.path.join(args.output_dir, f"{output_filename_base}.wav")
                 logger.info(f"  Output filename: {output_filename}")
                 logger.info(f"  Output path: {output_path}")
-                
+
                 # Print all processed parameters before calling clone
                 logger.info("")
                 logger.info("  " + "=" * 76)
@@ -706,7 +713,7 @@ if __name__ == "__main__":
                 logger.info(f"    Exists: {os.path.exists(reference_audio_path)}")
                 if os.path.exists(reference_audio_path):
                     file_size = os.path.getsize(reference_audio_path)
-                    logger.info(f"    Size: {file_size} bytes ({file_size/1024:.2f} KB)")
+                    logger.info(f"    Size: {file_size} bytes ({file_size / 1024:.2f} KB)")
                 logger.info(f"  Output Configuration:")
                 logger.info(f"    Output Directory: {args.output_dir}")
                 logger.info(f"    Output Filename Base: {output_filename_base}")
@@ -716,10 +723,10 @@ if __name__ == "__main__":
                 logger.info(f"    Edit Info: {args.edit_info if args.edit_info else 'None'}")
                 logger.info("  " + "=" * 76)
                 logger.info("")
-                
+
                 # Perform cloning
                 logger.info(f"  Calling generate_clone() method...")
-                
+
                 _, state = step_audio_editx.generate_clone(
                     prompt_text,
                     reference_audio_path,
@@ -729,30 +736,32 @@ if __name__ == "__main__":
                     step_audio_editx.init_state(),
                     output_filename_base,
                 )
-                
+                time.sleep(5)
                 # Verify output file was created
                 if os.path.exists(output_path):
                     output_size = os.path.getsize(output_path)
                     logger.info(f"  ✓ Clone operation completed successfully")
                     logger.info(f"    Output file created: {output_path}")
-                    logger.info(f"    Output file size: {output_size} bytes ({output_size/1024:.2f} KB)")
+                    logger.info(f"    Output file size: {output_size} bytes ({output_size / 1024:.2f} KB)")
                     success_count += 1
                 else:
                     logger.warning(f"  ⚠ Clone operation reported success but output file not found: {output_path}")
                     success_count += 1  # Still count as success if function returned without error
-                
+
+                logger.info("Clone operation completed successfully sleep 5s")
             except Exception as e:
                 logger.error(f"  ✗ Clone operation failed for segment {segment_index}")
                 logger.error(f"    Error type: {type(e).__name__}")
                 logger.error(f"    Error message: {str(e)}")
                 import traceback
+
                 logger.error(f"    Traceback:")
                 for line in traceback.format_exc().split('\n'):
                     if line.strip():
                         logger.error(f"      {line}")
                 failed_count += 1
                 continue
-        
+
         # Final summary
         logger.info("")
         logger.info("=" * 80)
@@ -762,9 +771,9 @@ if __name__ == "__main__":
         logger.info(f"  ✓ Successful: {success_count}")
         logger.info(f"  ✗ Failed: {failed_count}")
         logger.info(f"  ⊘ Skipped (missing files): {skipped_count}")
-        logger.info(f"  Success rate: {(success_count/len(subtitles)*100):.1f}%")
+        logger.info(f"  Success rate: {(success_count / len(subtitles) * 100):.1f}%")
         logger.info("=" * 80)
-        
+
     elif args.edit_type == "clone":
         # Single clone mode
         if not args.prompt_audio_path:
@@ -773,7 +782,7 @@ if __name__ == "__main__":
         if not args.generated_text:
             logger.error("--generated-text is required for single clone mode")
             exit(1)
-        
+
         filename_out = os.path.basename(args.prompt_audio_path).split('.')[0] + "_cloned"
         _, state = step_audio_editx.generate_clone(
             args.prompt_text,
@@ -790,7 +799,7 @@ if __name__ == "__main__":
         if not args.prompt_audio_path:
             logger.error("--prompt-audio-path is required for edit mode")
             exit(1)
-        
+
         state = step_audio_editx.init_state()
         for iter_idx in range(args.n_edit_iter):
             logger.info(f"Starting edit iteration {iter_idx + 1}/{args.n_edit_iter}")
